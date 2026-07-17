@@ -20,22 +20,28 @@
 
 ---
 
-## 2. 地图链接（用户主动点击后）
+## 2. Google Maps iframe
 
-- 本项目在用户点击"在 OpenStreetMap 打开"按钮后，在**新标签页**打开 `https://www.openstreetmap.org/` 地图链接
-- 仅在用户主动操作时发生；核心页面不加载任何第三方 iframe 或地图瓦片
-- OpenStreetMap 网站适用其[隐私政策](https://wiki.osmfoundation.org/wiki/Privacy_Policy)和服务条款
-
----
-
-## 3. 虚构姓名
-
-- 姓名完全由本项目内置的静态名字池生成，**无外部 API 依赖**
-- 不对应任何真实人物；多族群名字（中文、马来文、印度文等）仅为格式示例，不代表对任何族群的刻板印象
+- 生成结果显示后，页面默认加载 `https://www.google.com/maps?...&output=embed` iframe
+- Google 会收到访问者 IP、User-Agent、Referer（受浏览器和页面 Referrer-Policy 影响）等请求元数据
+- Google Maps 适用 Google 自身的服务条款、Cookie 与隐私政策
 
 ---
 
-## 4. 原项目来源
+## 3. Random User
+
+- 用途：通过 `https://randomuser.me/api/1.4/` 获取随机姓名和性别
+- 请求由 Cloudflare Worker 服务端发出，Random User 通常看到 Cloudflare 出口而非最终访客 IP
+- Random User 不支持所有项目国家的 nationality，姓名不保证与所选地址国家匹配
+
+## 4. 第三方图床
+
+- 页脚 GitHub 图标使用原项目的 `https://pic.imgdb.cn/item/66e7ab36d9c307b7e9cefd24.png`
+- 浏览器默认加载该图片，图床会收到相应请求元数据
+
+---
+
+## 5. 原项目来源
 
 - 原始项目：<https://github.com/Adonis142857/Real-Address-Generator>，MIT License，Copyright (c) 2024 Adonis142857
 - 原始 README 声明："初代版本来自 chatgpt.org.uk"，但原版未提供该来源的具体许可证链接
@@ -43,6 +49,6 @@
 
 ---
 
-## 5. 无其他第三方依赖
+## 6. 其他依赖说明
 
-本项目无 npm 依赖，无构建工具，无分析/追踪 SDK，无外部字体，无外部图片。所有页面资产由 Worker 直接内联提供。
+本项目无 npm 依赖、无构建工具、无分析/追踪 SDK、无外部字体。外部运行时依赖包括 Nominatim、Random User、Google Maps iframe 和 pic.imgdb.cn 图标。

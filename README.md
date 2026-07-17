@@ -12,7 +12,7 @@
 ## ⚠️ 重要数据说明
 
 - **地址**：坐标来自 OpenStreetMap，反向地理编码后得到的地址**可能对应真实住宅或商业住户**。数据来源为公共地图数据库，并非专为测试创建。
-- **姓名**：完全虚构，由本地名字池生成，**不对应任何真实人物**。
+- **姓名**：由 [Random User](https://randomuser.me/) 外部服务随机生成，通常不与所选地址国家匹配，也不应视为真实身份资料。
 - **电话**：格式示例，**随机生成，可能对应真实用户，切勿拨打**。
 - **禁止用途**：不得用于欺诈、身份冒充、KYC 绕过、骚扰电话或任何违法行为。
 
@@ -26,14 +26,14 @@
 | CSP | 无 | strict CSP + nosniff + Referrer-Policy 等 |
 | country 验证 | 无 allowlist，TypeError crash | 统一 allowlist，非法值 400 |
 | HTTP 方法 | 不限制 | 仅 GET/HEAD，其他 405 |
-| Nominatim 调用次数 | 最多 100 次/请求 | 最多 3 次/请求 |
+| Nominatim 调用次数 | 最多 100 次/请求 | 最多 50 次/请求（高风险配置） |
 | 外部 fetch 超时 | 无 | AbortSignal 4.5 s |
 | 缓存 | 无 | Cache API 坐标网格缓存，不缓存错误 |
-| 姓名来源 | randomuser.me（外部依赖） | 本地虚构名字池，无外部依赖 |
-| 新加坡支持 | 无 | 6 个陆地区域中心、+65 电话、多族群姓名、6 位邮编校验 |
-| 荷兰支持 | 无 | 5 个城市采样中心、+31 测试电话、本地虚构姓名、荷兰邮编校验 |
-| 地图 | 默认加载 Google Maps iframe | 用户点击后新窗口打开 OSM，不自动加载第三方 |
-| 第三方图片 | 第三方图床 GitHub 图标 | 无第三方图片/外链媒体 |
+| 姓名来源 | randomuser.me（外部依赖） | randomuser.me（固定 API 版本、超时与响应校验） |
+| 新加坡支持 | 无 | 6 个陆地区域中心、+65 电话、6 位邮编校验 |
+| 荷兰支持 | 无 | 5 个城市采样中心、+31 测试电话、荷兰邮编校验 |
+| 地图 | 默认加载 Google Maps iframe | 默认加载 Google Maps iframe，并通过 CSP 限定来源 |
+| 第三方图片 | 第三方图床 GitHub 图标 | 保留原第三方图床 GitHub 图标，并通过 CSP 限定来源 |
 | localStorage 清除 | 无 | 提供清空按钮和隐私说明 |
 | Worker 语法 | Service Worker 语法 | ES Module Worker（Wrangler 可复现部署） |
 | 测试 | 无 | Node 内置 `node:test` 单元测试 |
@@ -85,7 +85,7 @@ wrangler deploy
   - 必须提供可识别的真实 `User-Agent` 和 `Referer`
   - 必须缓存结果，避免重复查询同一坐标
   - 必须显示 OpenStreetMap attribution（本项目已在页面和 README 中提供）
-- **本项目的代码层面**每请求最多 3 次 Nominatim 调用 + Cache API 缓存，但**无法在代码内保证跨所有访客的全局 1 req/s 限制**。
+- **本项目按当前需求配置为每请求最多 50 次 Nominatim 调用**，再加一次 Random User 请求；这会造成明显的请求放大，且最坏路径可能超过 Cloudflare 免费计划单次入站请求允许的子请求数量。Cache API 只能减少重复坐标请求，**无法保证跨所有访客的全局 1 req/s 限制**。
 - **生产环境强烈建议：** 使用自建 Nominatim 实例或商业地理编码服务（如 [Geocodio](https://www.geocod.io/)、[LocationIQ](https://locationiq.com/)、[Geoapify](https://www.geoapify.com/) 等），并通过 `NOMINATIM_BASE_URL` 环境变量切换。
 - 如果公共 Nominatim 限流/封禁你的 Worker 出口 IP，属于**你的部署责任**，与本项目代码无关。
 
@@ -104,7 +104,7 @@ node --test test/worker.test.mjs
 node --test
 ```
 
-测试覆盖：SG/NL 配置与地址格式、非法 country 返回 400、方法限制、XSS payload 不进入可执行 HTML、外部 fetch 失败/超时错误处理、最多尝试次数（3 次）、缓存命中模拟。
+测试覆盖：SG/NL 配置与地址格式、非法 country 返回 400、方法限制、XSS payload 不进入可执行 HTML、Random User 响应、外部 fetch 失败/超时错误处理、最多尝试次数（50 次）、缓存命中模拟。
 
 ---
 

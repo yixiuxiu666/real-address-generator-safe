@@ -1,11 +1,8 @@
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 50;
 const FETCH_TIMEOUT_MS = 4500;
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const DEFAULT_USER_AGENT = 'RealAddressGeneratorSafe/1.0 (+https://example.com/contact)';
 const DEFAULT_REFERER = 'https://example.com/real-address-generator-safe';
-
-const COMMON_FIRST_NAMES = ['Alex', 'Casey', 'Jordan', 'Morgan', 'Riley', 'Taylor'];
-const COMMON_LAST_NAMES = ['Avery', 'Bennett', 'Ellis', 'Hayes', 'Morgan', 'Parker'];
 
 function country(label, centers, dialingCode, localDigits = 9, names = null) {
   return { label, centers, dialingCode, localDigits, names };
@@ -64,7 +61,7 @@ export const COUNTRIES = Object.freeze({
 const COUNTRY_CODES = Object.freeze(Object.keys(COUNTRIES));
 
 const SECURITY_HEADERS = Object.freeze({
-  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests",
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://pic.imgdb.cn; connect-src 'self'; frame-src https://www.google.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; upgrade-insecure-requests",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
@@ -78,16 +75,17 @@ const HTML = `<!doctype html>
 <title>安全地址样本生成器</title><link rel="stylesheet" href="/style.css"></head>
 <body><main>
 <header><h1>地址样本生成器</h1><p class="lead">安全重构版 · Safe derivative</p></header>
-<section class="warning" aria-label="重要说明"><strong>仅限测试：</strong>地址来自 OpenStreetMap，可能对应真实住户；姓名和电话为本地生成的虚构测试数据，电话勿拨打。不得用于欺诈、KYC、骚扰或冒充真实身份。</section>
+<section class="warning" aria-label="重要说明"><strong>仅限测试：</strong>地址来自 OpenStreetMap，可能对应真实住户；姓名由 Random User 外部服务生成，电话为随机测试格式且勿拨打。不得用于欺诈、KYC、骚扰或冒充真实身份。</section>
 <section class="card controls"><label for="country">国家 / Country</label><select id="country"></select><button id="generate" type="button">生成 / Generate</button><span id="status" role="status" aria-live="polite"></span></section>
 <section class="card" id="result" hidden>
-<dl><div><dt>虚构姓名</dt><dd><button class="copy-value" data-field="name"></button></dd></div><div><dt>测试电话（勿拨）</dt><dd><button class="copy-value" data-field="phone"></button></dd></div><div><dt>OSM 地址</dt><dd><button class="copy-value" data-field="address"></button></dd></div></dl>
-<div class="actions"><button id="map" type="button">在 OpenStreetMap 打开（将连接第三方）</button><button id="save" type="button">保存并添加备注</button></div></section>
+<dl><div><dt>随机姓名</dt><dd><button class="copy-value" data-field="name"></button></dd></div><div><dt>测试电话（勿拨）</dt><dd><button class="copy-value" data-field="phone"></button></dd></div><div><dt>OSM 地址</dt><dd><button class="copy-value" data-field="address"></button></dd></div></dl>
+<iframe id="map" class="map" title="Google Maps 地址地图" loading="eager" referrerpolicy="no-referrer"></iframe>
+<div class="actions"><button id="save" type="button">保存并添加备注</button></div></section>
 <section class="card"><h2>本机保存项</h2><p>保存项和备注仅存于此站点的浏览器 localStorage，不会由本应用上传；同源脚本可读取，且不会自动过期。</p><button id="clear" class="danger" type="button">清空全部本地数据</button><ul id="saved"></ul></section>
-<section class="card small"><h2>数据与第三方</h2><p>服务器为生成地址向 Nominatim 发送随机坐标；地图仅在点击按钮后以新窗口打开。核心页面不加载第三方图片、脚本或 iframe。</p><p>地址数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>，ODbL；地理编码由 <a href="https://nominatim.org/" target="_blank" rel="noopener noreferrer">Nominatim</a> 提供。</p></section>
-</main><footer>Original version from chatgpt.org.uk, modified by Adonis142857. This safety refactor is a derivative work.</footer><script src="/app.js" defer></script></body></html>`;
+<section class="card small"><h2>数据与第三方</h2><p>服务器为生成地址向 Nominatim 发送随机坐标，并向 Random User 请求随机姓名；生成结果后，浏览器默认加载 Google Maps iframe。页脚 GitHub 图标来自第三方图床 pic.imgdb.cn，这些第三方会接收到相应请求元数据。</p><p>地址数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>，ODbL；地理编码由 <a href="https://nominatim.org/" target="_blank" rel="noopener noreferrer">Nominatim</a> 提供。</p></section>
+</main><footer>Original version from chatgpt.org.uk, modified by Adonis142857. This safety refactor is a derivative work. <a href="https://github.com/Adonis142857/Real-Address-Generator" target="_blank" rel="noopener noreferrer"><img class="github-icon" src="https://pic.imgdb.cn/item/66e7ab36d9c307b7e9cefd24.png" alt="GitHub"></a></footer><script src="/app.js" defer></script></body></html>`;
 
-const CSS = `:root{font:16px/1.5 system-ui,sans-serif;color:#17202a;background:#f3f6f9}*{box-sizing:border-box}body{margin:0}main{max-width:850px;margin:auto;padding:24px}header{text-align:center}.lead{color:#52606d}.card,.warning{background:#fff;border:1px solid #d9e2ec;border-radius:12px;padding:18px;margin:16px 0;box-shadow:0 3px 12px #0001}.warning{border-left:5px solid #d97706;background:#fffbeb}.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}select,button{font:inherit;padding:9px 12px;border:1px solid #9fb3c8;border-radius:7px;background:#fff}button{cursor:pointer}#generate{background:#1769aa;color:#fff;border-color:#1769aa}.danger{color:#a61b1b}dl div{margin:12px 0}dt{font-weight:700}.copy-value{width:100%;text-align:left;overflow-wrap:anywhere;background:#f8fafc}.actions{display:flex;gap:10px;flex-wrap:wrap}.small{font-size:.92rem}a{color:#075985}#saved{padding-left:22px}#saved li{margin:9px 0;overflow-wrap:anywhere}footer{text-align:center;padding:24px;color:#52606d}@media(max-width:600px){main{padding:12px}.controls>*{width:100%}}`;
+const CSS = `:root{font:16px/1.5 system-ui,sans-serif;color:#17202a;background:#f3f6f9}*{box-sizing:border-box}body{margin:0}main{max-width:850px;margin:auto;padding:24px}header{text-align:center}.lead{color:#52606d}.card,.warning{background:#fff;border:1px solid #d9e2ec;border-radius:12px;padding:18px;margin:16px 0;box-shadow:0 3px 12px #0001}.warning{border-left:5px solid #d97706;background:#fffbeb}.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}select,button{font:inherit;padding:9px 12px;border:1px solid #9fb3c8;border-radius:7px;background:#fff}button{cursor:pointer}#generate{background:#1769aa;color:#fff;border-color:#1769aa}.danger{color:#a61b1b}dl div{margin:12px 0}dt{font-weight:700}.copy-value{width:100%;text-align:left;overflow-wrap:anywhere;background:#f8fafc}.map{width:100%;height:340px;border:0;border-radius:8px;margin:8px 0 14px}.actions{display:flex;gap:10px;flex-wrap:wrap}.small{font-size:.92rem}a{color:#075985}#saved{padding-left:22px}#saved li{margin:9px 0;overflow-wrap:anywhere}.github-icon{width:20px;height:20px;vertical-align:middle;position:relative;top:-2px}footer{text-align:center;padding:24px;color:#52606d}@media(max-width:600px){main{padding:12px}.controls>*{width:100%}.map{height:280px}}`;
 
 const APP_JS = `(() => {
 'use strict';
@@ -97,10 +95,9 @@ let current = null;
 function loadSaved(){try{const v=JSON.parse(localStorage.getItem(storageKey)||'[]');return Array.isArray(v)?v:[]}catch{return[]}}
 function renderSaved(){const list=$('saved');list.replaceChildren();loadSaved().forEach((entry,index)=>{const li=document.createElement('li');const text=document.createElement('span');text.textContent=(entry.note?'['+entry.note+'] ':'')+entry.name+' · '+entry.phone+' · '+entry.address+' ';const del=document.createElement('button');del.type='button';del.textContent='删除';del.addEventListener('click',()=>{const items=loadSaved();items.splice(index,1);localStorage.setItem(storageKey,JSON.stringify(items));renderSaved()});li.append(text,del);list.append(li)})}
 async function init(){try{const r=await fetch('/api/countries');if(!r.ok)throw new Error('countries');const data=await r.json();const selected=new URL(location.href).searchParams.get('country');data.countries.forEach(item=>{const o=document.createElement('option');o.value=item.code;o.textContent=item.label;o.selected=item.code===selected;$('country').append(o)});await generate()}catch{$('status').textContent='初始化失败，请稍后重试'}renderSaved()}
-async function generate(){const country=$('country').value;$('status').textContent='生成中…';$('generate').disabled=true;try{const r=await fetch('/api/generate?country='+encodeURIComponent(country));const data=await r.json();if(!r.ok)throw new Error(data.error?.message||'生成失败');current=data.data;document.querySelectorAll('[data-field]').forEach(el=>{el.textContent=current[el.dataset.field]});$('result').hidden=false;$('status').textContent='已生成'}catch(e){current=null;$('result').hidden=true;$('status').textContent=e.message}finally{$('generate').disabled=false}}
+async function generate(){const country=$('country').value;$('status').textContent='生成中…';$('generate').disabled=true;try{const r=await fetch('/api/generate?country='+encodeURIComponent(country));const data=await r.json();if(!r.ok)throw new Error(data.error?.message||'生成失败');current=data.data;document.querySelectorAll('[data-field]').forEach(el=>{el.textContent=current[el.dataset.field]});const mapUrl=new URL('https://www.google.com/maps');mapUrl.searchParams.set('q',current.address);mapUrl.searchParams.set('output','embed');$('map').src=mapUrl.toString();$('result').hidden=false;$('status').textContent='已生成'}catch(e){current=null;$('map').removeAttribute('src');$('result').hidden=true;$('status').textContent=e.message}finally{$('generate').disabled=false}}
 document.addEventListener('click',e=>{const field=e.target.dataset?.field;if(field&&current){navigator.clipboard.writeText(current[field]).then(()=>{$('status').textContent='已复制'}).catch(()=>{$('status').textContent='复制失败'})}});
 $('generate').addEventListener('click',generate);$('country').addEventListener('change',()=>{history.replaceState(null,'','?country='+encodeURIComponent($('country').value));generate()});
-$('map').addEventListener('click',()=>{if(current){const u=new URL('https://www.openstreetmap.org/');u.searchParams.set('mlat',String(current.latitude));u.searchParams.set('mlon',String(current.longitude));u.hash='map=18/'+current.latitude+'/'+current.longitude;window.open(u.toString(),'_blank','noopener,noreferrer')}});
 $('save').addEventListener('click',()=>{if(!current)return;const note=prompt('备注（可留空）')||'';const items=loadSaved();items.push({note:note.slice(0,200),name:current.name,phone:current.phone,address:current.address});localStorage.setItem(storageKey,JSON.stringify(items.slice(-50)));renderSaved()});
 $('clear').addEventListener('click',()=>{if(confirm('确定清空全部本地保存项？')){localStorage.removeItem(storageKey);renderSaved()}});init();
 })();`;
@@ -189,15 +186,6 @@ export function formatAddress(address, code) {
   return [houseRoad, locality, clean(address.postcode), clean(address.country)].filter(Boolean).join(', ');
 }
 
-function fictionalPerson(code, random = Math.random) {
-  const names = COUNTRIES[code].names;
-  if (names) {
-    const [first, last] = names[randomInt(names.length, random)];
-    return `${first} ${last}`;
-  }
-  return `${COMMON_FIRST_NAMES[randomInt(COMMON_FIRST_NAMES.length, random)]} ${COMMON_LAST_NAMES[randomInt(COMMON_LAST_NAMES.length, random)]}`;
-}
-
 function testPhone(code, random = Math.random) {
   const cfg = COUNTRIES[code];
   let digits = '';
@@ -225,6 +213,18 @@ async function fetchJsonWithTimeout(url, options, deps) {
   } finally {
     (deps.clearTimeout || clearTimeout)(timeout);
   }
+}
+
+async function randomUser(deps) {
+  const url = 'https://randomuser.me/api/1.4/?inc=name,gender&noinfo';
+  const data = await fetchJsonWithTimeout(url, {
+    headers: { 'Accept': 'application/json' }
+  }, deps);
+  const person = data?.results?.[0];
+  const first = String(person?.name?.first || '').trim();
+  const last = String(person?.name?.last || '').trim();
+  if (!first || !last) throw new Error('random_user_invalid_response');
+  return { name: `${first} ${last}`, gender: String(person.gender || 'unspecified') };
 }
 
 export async function reverseGeocode(code, location, env, deps) {
@@ -268,17 +268,25 @@ export async function generateAddress(code, env = {}, deps = {}) {
     try {
       const result = await reverseGeocode(normalized, sampleLocation(normalized, runtime.random), env, runtime);
       if (!validAddress(result.data, normalized)) { lastFailure = 'no_matching_address'; continue; }
+      let person;
+      try {
+        person = await randomUser(runtime);
+      } catch (error) {
+        const code = error?.name === 'AbortError' ? 'random_user_timeout' : 'random_user_failure';
+        return { error: errorResponse(502, code, 'Random User did not return a usable test name') };
+      }
       return {
         data: {
           country: normalized,
-          name: fictionalPerson(normalized, runtime.random),
+          name: person.name,
+          gender: person.gender,
           phone: testPhone(normalized, runtime.random),
           address: formatAddress(result.data.address, normalized),
           latitude: result.lat,
           longitude: result.lon,
           attempts: attempt,
           addressSource: 'OpenStreetMap contributors / Nominatim',
-          identityNotice: 'Fictional test name and phone; do not call or use for identity verification.'
+          identityNotice: 'Random User name and test phone; do not call or use for identity verification.'
         }
       };
     } catch (error) {

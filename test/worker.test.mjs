@@ -40,6 +40,14 @@ function jsonFetch(value, { status = 200, counter } = {}) {
   };
 }
 
+function addressAndPersonFetch(addressData, personData = {
+  results: [{ gender: 'female', name: { first: 'Test', last: 'Person' } }]
+}) {
+  return async url => new Response(JSON.stringify(
+    String(url).startsWith('https://randomuser.me/') ? personData : addressData
+  ), { headers: { 'Content-Type': 'application/json' } });
+}
+
 class MemoryCache {
   constructor() { this.items = new Map(); }
   async match(request) {
@@ -106,7 +114,9 @@ test('dynamic upstream data is JSON only and never interpolated into executable 
   const upstream = {
     address: { ...SG_ADDRESS.address, road: payload }
   };
-  const deps = { fetch: jsonFetch(upstream), random: () => 0.5, cache: null };
+  const deps = { fetch: addressAndPersonFetch(upstream, {
+    results: [{ gender: 'female', name: { first: `A'B`, last: '<script>alert(1)</script>' } }]
+  }), random: () => 0.5, cache: null };
   const api = await handleRequest(
     new Request('https://example.test/api/generate?country=SG'), {}, deps
   );
@@ -121,6 +131,9 @@ test('dynamic upstream data is JSON only and never interpolated into executable 
   assert.doesNotMatch(html, /onclick\s*=/i);
   assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.match(page.headers.get('content-security-policy'), /frame-src https:\/\/www\.google\.com/);
+  assert.match(html, /https:\/\/pic\.imgdb\.cn\/item\/66e7ab36d9c307b7e9cefd24\.png/);
+  assert.match(html, /<iframe id="map"/);
 
   const script = await (await handleRequest(new Request('https://example.test/app.js'))).text();
   assert.match(script, /\.textContent\s*=/);
@@ -129,7 +142,7 @@ test('dynamic upstream data is JSON only and never interpolated into executable 
 
 test('a valid Singapore result has +65 test phone and six-digit postcode', async () => {
   const result = await generateAddress('sg', {}, {
-    fetch: jsonFetch(SG_ADDRESS),
+    fetch: addressAndPersonFetch(SG_ADDRESS),
     random: () => 0.5,
     cache: null
   });
@@ -138,12 +151,13 @@ test('a valid Singapore result has +65 test phone and six-digit postcode', async
   assert.match(result.data.phone, /^\+65 [89]\d{3} \d{4}$/);
   assert.equal(result.data.address, '10 Example Road, Singapore 123456, Singapore');
   assert.equal(result.data.attempts, 1);
-  assert.match(result.data.identityNotice, /Fictional test/);
+  assert.equal(result.data.name, 'Test Person');
+  assert.match(result.data.identityNotice, /Random User name/);
 });
 
 test('a valid Netherlands result has +31 mobile test format and Dutch postcode', async () => {
   const result = await generateAddress('nl', {}, {
-    fetch: jsonFetch(NL_ADDRESS),
+    fetch: addressAndPersonFetch(NL_ADDRESS),
     random: () => 0.5,
     cache: null
   });
@@ -154,14 +168,33 @@ test('a valid Netherlands result has +31 mobile test format and Dutch postcode',
   assert.equal(result.data.attempts, 1);
 });
 
-test('unsuitable upstream results stop after exactly three attempts', async () => {
+test('Random User failure is normalized after a valid address without retrying Nominatim', async () => {
+  let addressCalls = 0;
+  let personCalls = 0;
+  const fetch = async url => {
+    if (String(url).startsWith('https://randomuser.me/')) {
+      personCalls++;
+      return new Response('blocked', { status: 503 });
+    }
+    addressCalls++;
+    return new Response(JSON.stringify(SG_ADDRESS), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+  const result = await generateAddress('SG', {}, { fetch, random: () => 0.5, cache: null });
+  assert.equal(addressCalls, 1);
+  assert.equal(personCalls, 1);
+  assert.equal((await result.error.json()).error.code, 'random_user_failure');
+});
+
+test('unsuitable upstream results stop after exactly fifty attempts', async () => {
   const counter = { count: 0 };
   const result = await generateAddress('SG', {}, {
     fetch: jsonFetch({ address: { country_code: 'sg' } }, { counter }),
     random: () => 0.5,
     cache: null
   });
-  assert.equal(counter.count, 3);
+  assert.equal(counter.count, 50);
   assert.ok(result.error);
   assert.equal(result.error.status, 502);
   assert.equal((await result.error.json()).error.code, 'no_matching_address');
@@ -174,7 +207,7 @@ test('upstream HTTP failure is normalized and bounded', async () => {
     random: () => 0.5,
     cache: null
   });
-  assert.equal(counter.count, 3);
+  assert.equal(counter.count, 50);
   assert.equal((await result.error.json()).error.code, 'upstream_failure');
 });
 
@@ -194,7 +227,7 @@ test('upstream timeout is aborted and returned as a normalized error', async () 
     cache: null,
     timeoutMs: 2
   });
-  assert.equal(calls, 3);
+  assert.equal(calls, 50);
   assert.equal((await result.error.json()).error.code, 'upstream_timeout');
 });
 
