@@ -26,9 +26,9 @@
 | CSP | 无 | strict CSP + nosniff + Referrer-Policy 等 |
 | country 验证 | 无 allowlist，TypeError crash | 统一 allowlist，非法值 400 |
 | HTTP 方法 | 不限制 | 仅 GET/HEAD，其他 405 |
-| Nominatim 调用次数 | 最多 100 次/请求 | 最多 50 次/请求（高风险配置） |
+| Nominatim 调用次数 | 最多 100 次/请求 | 最多 3 次实时查询；失败时从成功地址池回退 |
 | 外部 fetch 超时 | 无 | AbortSignal 4.5 s |
-| 缓存 | 无 | Cache API 坐标网格缓存，不缓存错误 |
+| 缓存 | 无 | Cache API 坐标网格缓存 + 按国家划分的成功地址池，不缓存错误 |
 | 姓名来源 | randomuser.me（外部依赖） | randomuser.me（固定 API 版本、超时与响应校验） |
 | 新加坡支持 | 无 | 6 个陆地区域中心、+65 电话、6 位邮编校验 |
 | 荷兰支持 | 无 | 5 个城市采样中心、+31 测试电话、荷兰邮编校验 |
@@ -85,7 +85,8 @@ wrangler deploy
   - 必须提供可识别的真实 `User-Agent` 和 `Referer`
   - 必须缓存结果，避免重复查询同一坐标
   - 必须显示 OpenStreetMap attribution（本项目已在页面和 README 中提供）
-- **本项目按当前需求配置为每请求最多 50 次 Nominatim 调用**，再加一次 Random User 请求；这会造成明显的请求放大，且最坏路径可能超过 Cloudflare 免费计划单次入站请求允许的子请求数量。Cache API 只能减少重复坐标请求，**无法保证跨所有访客的全局 1 req/s 限制**。
+- **本项目每次生成最多进行 3 次实时 Nominatim 查询。** 查询成功后，只把地址文本和坐标写入按国家划分的 Cache API 成功地址池（最多 100 条、自动去重）；3 次均失败时优先从该国地址池随机回退。姓名、电话、备注不会写入地址池。地址池属于边缘缓存，可能被 Cloudflare 淘汰，不是永久数据库。
+- 坐标缓存和成功地址池能减少失败率及重复请求，但**无法保证跨所有访客的全局 1 req/s 限制**。公开部署仍需控制整体流量。
 - **生产环境强烈建议：** 使用自建 Nominatim 实例或商业地理编码服务（如 [Geocodio](https://www.geocod.io/)、[LocationIQ](https://locationiq.com/)、[Geoapify](https://www.geoapify.com/) 等），并通过 `NOMINATIM_BASE_URL` 环境变量切换。
 - 如果公共 Nominatim 限流/封禁你的 Worker 出口 IP，属于**你的部署责任**，与本项目代码无关。
 
@@ -104,7 +105,7 @@ node --test test/worker.test.mjs
 node --test
 ```
 
-测试覆盖：SG/NL 配置与地址格式、非法 country 返回 400、方法限制、XSS payload 不进入可执行 HTML、Random User 响应、外部 fetch 失败/超时错误处理、最多尝试次数（50 次）、缓存命中模拟。
+测试覆盖：SG/NL 配置与地址格式、非法 country 返回 400、方法限制、XSS payload 不进入可执行 HTML、Random User 响应、外部 fetch 失败/超时错误处理、最多 3 次实时查询、成功地址池写入/去重/回退、坐标缓存命中模拟。
 
 ---
 

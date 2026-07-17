@@ -1,6 +1,7 @@
-const MAX_ATTEMPTS = 50;
+const MAX_ATTEMPTS = 3;
 const FETCH_TIMEOUT_MS = 4500;
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
+const ADDRESS_POOL_LIMIT = 100;
 const DEFAULT_USER_AGENT = 'RealAddressGeneratorSafe/1.0 (+https://example.com/contact)';
 const DEFAULT_REFERER = 'https://example.com/real-address-generator-safe';
 
@@ -202,6 +203,52 @@ function cacheFor(deps) {
   return deps.cache || globalThis.caches?.default || null;
 }
 
+function addressPoolKey(code) {
+  return new Request(`https://cache.invalid/address-pool?country=${encodeURIComponent(code)}`);
+}
+
+async function readAddressPool(code, deps) {
+  const cache = cacheFor(deps);
+  if (!cache) return [];
+  try {
+    const hit = await cache.match(addressPoolKey(code));
+    if (!hit) return [];
+    const body = await hit.json();
+    return Array.isArray(body?.entries) ? body.entries.filter(entry =>
+      typeof entry?.address === 'string' && Number.isFinite(entry?.latitude) && Number.isFinite(entry?.longitude)
+    ).slice(-ADDRESS_POOL_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function addAddressToPool(code, entry, deps) {
+  const cache = cacheFor(deps);
+  if (!cache) return;
+  try {
+    const entries = await readAddressPool(code, deps);
+    const fingerprint = `${entry.address}\n${entry.latitude}\n${entry.longitude}`;
+    const deduplicated = entries.filter(item =>
+      `${item.address}\n${item.latitude}\n${item.longitude}` !== fingerprint
+    );
+    deduplicated.push(entry);
+    const response = new Response(JSON.stringify({ entries: deduplicated.slice(-ADDRESS_POOL_LIMIT) }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`
+      }
+    });
+    await cache.put(addressPoolKey(code), response);
+  } catch {
+    // The pool is an optional, best-effort fallback and must never break output.
+  }
+}
+
+async function pickAddressFromPool(code, deps, random = Math.random) {
+  const entries = await readAddressPool(code, deps);
+  return entries.length ? entries[randomInt(entries.length, random)] : null;
+}
+
 async function fetchJsonWithTimeout(url, options, deps) {
   const controller = new AbortController();
   const timeout = (deps.setTimeout || setTimeout)(() => controller.abort(), deps.timeoutMs ?? FETCH_TIMEOUT_MS);
@@ -264,36 +311,52 @@ export async function generateAddress(code, env = {}, deps = {}) {
   if (!COUNTRIES[normalized]) return { error: errorResponse(400, 'invalid_country', 'country must be one of the advertised country codes') };
   const runtime = { fetch: deps.fetch || globalThis.fetch, random: deps.random || Math.random, ...deps };
   let lastFailure = 'no_matching_address';
+  let selectedAddress = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const result = await reverseGeocode(normalized, sampleLocation(normalized, runtime.random), env, runtime);
       if (!validAddress(result.data, normalized)) { lastFailure = 'no_matching_address'; continue; }
-      let person;
-      try {
-        person = await randomUser(runtime);
-      } catch (error) {
-        const code = error?.name === 'AbortError' ? 'random_user_timeout' : 'random_user_failure';
-        return { error: errorResponse(502, code, 'Random User did not return a usable test name') };
-      }
-      return {
-        data: {
-          country: normalized,
-          name: person.name,
-          gender: person.gender,
-          phone: testPhone(normalized, runtime.random),
-          address: formatAddress(result.data.address, normalized),
-          latitude: result.lat,
-          longitude: result.lon,
-          attempts: attempt,
-          addressSource: 'OpenStreetMap contributors / Nominatim',
-          identityNotice: 'Random User name and test phone; do not call or use for identity verification.'
-        }
+      selectedAddress = {
+        address: formatAddress(result.data.address, normalized),
+        latitude: result.lat,
+        longitude: result.lon,
+        attempts: attempt,
+        poolFallback: false
       };
+      await addAddressToPool(normalized, selectedAddress, runtime);
+      break;
     } catch (error) {
       lastFailure = error?.name === 'AbortError' ? 'upstream_timeout' : 'upstream_failure';
     }
   }
-  return { error: errorResponse(502, lastFailure, 'Address provider did not return a suitable address within the bounded attempt limit') };
+  if (!selectedAddress) {
+    const pooled = await pickAddressFromPool(normalized, runtime, runtime.random);
+    if (pooled) selectedAddress = { ...pooled, attempts: MAX_ATTEMPTS, poolFallback: true };
+  }
+  if (!selectedAddress) {
+    return { error: errorResponse(502, lastFailure, 'Address provider did not return a suitable address and the success pool is empty') };
+  }
+
+  let person;
+  try {
+    person = await randomUser(runtime);
+  } catch (error) {
+    const code = error?.name === 'AbortError' ? 'random_user_timeout' : 'random_user_failure';
+    return { error: errorResponse(502, code, 'Random User did not return a usable test name') };
+  }
+  return {
+    data: {
+      country: normalized,
+      name: person.name,
+      gender: person.gender,
+      phone: testPhone(normalized, runtime.random),
+      ...selectedAddress,
+      addressSource: selectedAddress.poolFallback
+        ? 'Local success pool (originally OpenStreetMap contributors / Nominatim)'
+        : 'OpenStreetMap contributors / Nominatim',
+      identityNotice: 'Random User name and test phone; do not call or use for identity verification.'
+    }
+  };
 }
 
 export async function handleRequest(request, env = {}, deps = {}) {

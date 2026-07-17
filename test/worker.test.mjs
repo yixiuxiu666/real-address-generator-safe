@@ -187,14 +187,14 @@ test('Random User failure is normalized after a valid address without retrying N
   assert.equal((await result.error.json()).error.code, 'random_user_failure');
 });
 
-test('unsuitable upstream results stop after exactly fifty attempts', async () => {
+test('unsuitable upstream results stop after exactly three attempts when the pool is empty', async () => {
   const counter = { count: 0 };
   const result = await generateAddress('SG', {}, {
     fetch: jsonFetch({ address: { country_code: 'sg' } }, { counter }),
     random: () => 0.5,
     cache: null
   });
-  assert.equal(counter.count, 50);
+  assert.equal(counter.count, 3);
   assert.ok(result.error);
   assert.equal(result.error.status, 502);
   assert.equal((await result.error.json()).error.code, 'no_matching_address');
@@ -207,7 +207,7 @@ test('upstream HTTP failure is normalized and bounded', async () => {
     random: () => 0.5,
     cache: null
   });
-  assert.equal(counter.count, 50);
+  assert.equal(counter.count, 3);
   assert.equal((await result.error.json()).error.code, 'upstream_failure');
 });
 
@@ -227,7 +227,7 @@ test('upstream timeout is aborted and returned as a normalized error', async () 
     cache: null,
     timeoutMs: 2
   });
-  assert.equal(calls, 50);
+  assert.equal(calls, 3);
   assert.equal((await result.error.json()).error.code, 'upstream_timeout');
 });
 
@@ -257,4 +257,51 @@ test('cache misses and errors are not cached', async () => {
   await reverseGeocode('SG', location, {}, deps);
   await reverseGeocode('SG', location, {}, deps);
   assert.equal(counter.count, 2);
+});
+
+test('successful live addresses are saved and used after three later misses', async () => {
+  const cache = new MemoryCache();
+  const first = await generateAddress('SG', {}, {
+    fetch: addressAndPersonFetch(SG_ADDRESS),
+    random: () => 0.5,
+    cache
+  });
+  assert.ok(first.data);
+  assert.equal(first.data.poolFallback, false);
+
+  // Remove coordinate-response entries while preserving the independent
+  // country success pool, so the next request exercises live misses + fallback.
+  for (const key of [...cache.items.keys()]) {
+    if (key.includes('/reverse?')) cache.items.delete(key);
+  }
+  let geocoderCalls = 0;
+  const fetch = async url => {
+    if (String(url).startsWith('https://randomuser.me/')) {
+      return new Response(JSON.stringify({
+        results: [{ gender: 'male', name: { first: 'Pool', last: 'User' } }]
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+    geocoderCalls++;
+    return new Response(JSON.stringify({ address: { country_code: 'sg' } }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+  const fallback = await generateAddress('SG', {}, { fetch, random: () => 0.5, cache });
+  assert.equal(geocoderCalls, 3);
+  assert.ok(fallback.data);
+  assert.equal(fallback.data.poolFallback, true);
+  assert.equal(fallback.data.address, first.data.address);
+  assert.equal(fallback.data.name, 'Pool User');
+  assert.match(fallback.data.addressSource, /Local success pool/);
+});
+
+test('success pool deduplicates repeated identical live addresses', async () => {
+  const cache = new MemoryCache();
+  const deps = { fetch: addressAndPersonFetch(SG_ADDRESS), random: () => 0.5, cache };
+  await generateAddress('SG', {}, deps);
+  await generateAddress('SG', {}, deps);
+  const poolResponse = [...cache.items.entries()].find(([key]) => key.includes('/address-pool?'))?.[1];
+  assert.ok(poolResponse);
+  const pool = await poolResponse.clone().json();
+  assert.equal(pool.entries.length, 1);
 });
