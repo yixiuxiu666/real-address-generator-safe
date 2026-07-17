@@ -1,0 +1,27 @@
+// Cloudflare Module Worker — wrangler deploy to publish.
+// See: https://developers.cloudflare.com/workers/wrangler/
+{
+  "name": "real-address-generator-safe",
+  "main": "worker.js",
+  "compatibility_date": "2024-09-14",
+  // Use "module" format (ES module worker, not legacy service-worker syntax).
+  // This enables named exports, env bindings, and ctx.waitUntil().
+
+  // Vars are non-secret environment variables available as env.VAR in the worker.
+  // Override these before deploying to match your deployment:
+  "vars": {
+    // Set a descriptive User-Agent so Nominatim can identify and contact you.
+    // Required by Nominatim usage policy: https://operations.osmfoundation.org/policies/nominatim/
+    "NOMINATIM_USER_AGENT": "RealAddressGeneratorSafe/1.0 (+https://your-domain.example/contact)",
+    // Set to your public deployment URL so Nominatim can track origin.
+    "NOMINATIM_REFERER": "https://your-domain.example/",
+    // To use a self-hosted or commercial geocoder, set NOMINATIM_BASE_URL:
+    // "NOMINATIM_BASE_URL": "https://nominatim.your-own-server.example/reverse"
+    "NOMINATIM_BASE_URL": "https://nominatim.openstreetmap.org/reverse"
+  }
+  // To bind a KV namespace for persistent caching instead of Cache API,
+  // uncomment and configure:
+  // "kv_namespaces": [
+  //   { "binding": "CACHE_KV", "id": "YOUR_KV_NAMESPACE_ID" }
+  // ]
+}
